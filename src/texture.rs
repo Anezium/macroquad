@@ -447,7 +447,15 @@ pub fn render_target_ex(width: u32, height: u32, params: RenderTargetParams) -> 
     }
 
     let texture = Texture2D {
-        texture: context.textures.store_texture(texture),
+        // Without a resolve target the render pass owns this attachment and
+        // delete_render_pass deletes it. A managed handle would schedule a
+        // second deletion in end-of-frame garbage collection. Resolve textures
+        // are not owned by the pass and keep their ordinary managed lifetime.
+        texture: if params.sample_count == 0 {
+            TextureHandle::Unmanaged(texture)
+        } else {
+            context.textures.store_texture(texture)
+        },
     };
 
     let render_pass = RenderPass {
