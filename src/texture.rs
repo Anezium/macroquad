@@ -915,10 +915,45 @@ impl Batcher {
         self.unbatched.push(texture.weak_clone());
     }
 
+    pub(crate) fn garbage_collect(&mut self, textures: &TexturesContext) {
+        Self::collect_unbatched(&mut self.unbatched, textures);
+    }
+
+    fn collect_unbatched(unbatched: &mut Vec<Texture2D>, textures: &TexturesContext) {
+        // Pending atlas candidates are weak: scene retirement must remove dead
+        // slots even when the application never calls build_textures_atlas().
+        unbatched.retain(|texture| match texture.texture {
+            TextureHandle::ManagedWeak(slot) => textures.texture(slot).is_some(),
+            _ => true,
+        });
+    }
+
     pub fn get(&mut self, texture: &Texture2D) -> Option<(Texture2D, Rect)> {
         let id = SpriteKey::Texture(texture.raw_miniquad_id());
         let uv_rect = self.atlas.get_uv_rect(id)?;
         Some((Texture2D::unmanaged(self.atlas.texture()), uv_rect))
+    }
+}
+
+#[cfg(test)]
+mod lifetime_tests {
+    use super::*;
+
+    #[test]
+    fn retired_scene_textures_do_not_accumulate_as_pending_atlas_candidates() {
+        let mut textures = TexturesContext::new();
+        let mut candidates = Vec::new();
+        let raw = miniquad::TextureId::from_raw_id(miniquad::RawId::OpenGl(7));
+        let live = textures.textures.insert(raw);
+        candidates.push(Texture2D { texture: TextureHandle::ManagedWeak(live) });
+        for _ in 0..10000 {
+            let retired = textures.textures.insert(raw);
+            candidates.push(Texture2D { texture: TextureHandle::ManagedWeak(retired) });
+            textures.textures.remove(retired);
+            Batcher::collect_unbatched(&mut candidates, &textures);
+            assert_eq!(candidates.len(), 1);
+            assert!(candidates.capacity() <= 4);
+        }
     }
 }
 
