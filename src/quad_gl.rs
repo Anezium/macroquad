@@ -286,6 +286,7 @@ struct Uniform {
 #[derive(Clone)]
 struct PipelineExt {
     pipeline: miniquad::Pipeline,
+    shader: miniquad::ShaderId,
     wants_screen_texture: bool,
     uniforms: Vec<Uniform>,
     uniforms_data: Vec<u8>,
@@ -523,6 +524,7 @@ impl PipelinesStorage {
 
         self.pipelines[id] = Some(PipelineExt {
             pipeline,
+            shader,
             wants_screen_texture,
             uniforms,
             uniforms_data: vec![0; max_offset],
@@ -953,6 +955,15 @@ impl QuadGl {
         dc.indices_count += indices.len();
 
         dc.texture = self.state.texture;
+    }
+
+    // Material owns its custom shader and backend pipeline. Removing only the
+    // Macroquad slot leaks both ResourceManager entries on every map reload.
+    pub(crate) fn delete_material_pipeline(&mut self, ctx: &mut dyn RenderingBackend, pipeline: GlPipeline) {
+        if let Some(p) = self.pipelines.pipelines[pipeline.0].take() {
+            ctx.delete_pipeline(p.pipeline);
+            ctx.delete_shader(p.shader);
+        }
     }
 
     pub fn delete_pipeline(&mut self, pipeline: GlPipeline) {

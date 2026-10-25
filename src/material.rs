@@ -9,7 +9,11 @@ struct GlPipelineGuarded(GlPipeline);
 
 impl Drop for GlPipelineGuarded {
     fn drop(&mut self) {
-        get_context().gl.delete_pipeline(self.0);
+        let context = get_context();
+        // Flush queued draws while their pipeline is still valid. Native GL
+        // handles in flight are retired by the backend/driver as usual.
+        context.perform_render_passes();
+        context.gl.delete_material_pipeline(&mut *context.quad_context, self.0);
     }
 }
 
